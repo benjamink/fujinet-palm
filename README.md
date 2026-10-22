@@ -264,3 +264,12 @@ console runs at 460800 baud. When an app opens the link it logs
   rules a client must follow.
 - [docs/emulator-testing.md](docs/emulator-testing.md): the emulator setup in
   detail.
+
+## Credits
+
+- ISS Tracker's color and grayscale maps are derived from NASA Visible
+  Earth's
+  [Blue Marble](https://visibleearth.nasa.gov/images/57752/blue-marble-land-surface-shallow-water-and-shaded-topography),
+  which is public domain, by way of the Amiga ISS Tracker's map
+  (`palm/apps/isstracker/bluemarble.png`, turned into Palm bitmaps by
+  `mkmaps.py`).

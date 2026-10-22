@@ -2,6 +2,8 @@
  * isstracker.c and isstracker.rcp. */
 
 #define MapBitmap            1020  /* top-level BITMAP resource (map.bmp), NOT inside any FORM -- draw it manually with DmGetResource(bitmapRsc, MapBitmap) + WinDrawBitmap */
+#define MapColorBitmap       1021  /* 8-bit color map (map8.bmp, from bluemarble.png by mkmaps.py), same layout; only loaded on OS 3.5+ color screens */
+#define MapGrayBitmap        1022  /* 2-bit 4-gray map (map2.bmp, from bluemarble.png by mkmaps.py), same layout; loaded on grayscale screens */
 
 #define MainForm             1000
 #define RefreshButton        1010
