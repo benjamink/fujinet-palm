@@ -132,6 +132,31 @@ fujinet-pc's SD card is `run/SD/`, which git ignores. Put `.prc` files in
 emulator before using the Visor bridge, and vice versa. `host/fnhost` gets
 "connection refused" while either is connected.
 
+For a Palm in a serial cradle (Palm III, IIIc, V...), fujinet-pc talks to
+the serial port directly instead. `run/run-fujinet.sh` switches the link
+type, changing only `[BOIP] enabled` and `[Serial] port` in the config
+file, so host slots saved there are kept:
+
+```sh
+run/run-fujinet.sh -s /dev/ttyUSB0     # serial cradle
+run/run-fujinet.sh -i                  # bus-over-IP (Visor bridge, emulator)
+```
+
+Several devices can each have their own fujinet-pc at once. Give each a
+config file (`-f`, created as a copy of `fnconfig.ini` the first time; git
+ignores `run/fnconfig-*.ini`) and a web UI port (`-w`, default 8000).
+`/dev/serial/by-id/` names keep each serial adapter's port stable:
+
+```sh
+run/run-fujinet.sh -s /dev/serial/by-id/usb-Belkin...-port0
+run/run-fujinet.sh -f fnconfig-iiix.ini -s /dev/serial/by-id/usb-Keyspan...-port0 -w 8002
+run/run-fujinet.sh -f fnconfig-visor.ini -i -w 8001    # plus tools/visorbridge.js
+```
+
+Install over a serial cradle with `tools/install-apps.sh -s PORT`. Stop
+the fujinet-pc using that port first, and leave any FujiNet app on the
+Palm before pressing HotSync.
+
 ## Running on a Visor over USB
 
 You need a Visor with its stock USB cradle plugged into the Mac.
@@ -141,11 +166,15 @@ You need a Visor with its stock USB cradle plugged into the Mac.
    button:
 
    ```sh
+   tools/install-apps.sh                     # FnLink and FujiConfig
+   tools/install-apps.sh weather news        # apps by name, or .prc paths
    tools/install-prc.sh palm/apps/fujiconfig/fujiconfig.prc [more.prc ...]
    ```
 
    The installer pauses the bridge while it runs, so HotSync gets the
-   device.
+   device. For a Palm in a serial cradle, `tools/install-apps.sh -s
+   /dev/ttyUSB0 [app ...]` installs over the serial port with pilot-link's
+   `pilot-xfer`. Stop fujinet-pc first if it is using that port.
 3. **Start the bridge** and leave it running:
 
    ```sh
@@ -235,3 +264,12 @@ console runs at 460800 baud. When an app opens the link it logs
   rules a client must follow.
 - [docs/emulator-testing.md](docs/emulator-testing.md): the emulator setup in
   detail.
+
+## Credits
+
+- ISS Tracker's color and grayscale maps are derived from NASA Visible
+  Earth's
+  [Blue Marble](https://visibleearth.nasa.gov/images/57752/blue-marble-land-surface-shallow-water-and-shaded-topography),
+  which is public domain, by way of the Amiga ISS Tracker's map
+  (`palm/apps/isstracker/bluemarble.png`, turned into Palm bitmaps by
+  `mkmaps.py`).

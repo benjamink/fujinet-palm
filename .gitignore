@@ -21,3 +21,4 @@ bin.stamp
 /tools/palm-sync/
 /palm/apps/nettest/nettest
 /palm/netshim/fnnetlib
+/run/fnconfig-*.ini

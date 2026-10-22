@@ -2,8 +2,10 @@
  *
  * ISS Tracker -- shows the International Space Station's current position
  * on a small world map, refetched every 30 seconds, plus a "Crew" list of
- * everyone currently in space. Targets Palm OS 3.1 / DragonBall EZ
- * (Handspring Visor Deluxe), 160x160 mono/4-gray.
+ * everyone currently in space. Targets Palm OS 3.0+ / DragonBall EZ
+ * (Handspring Visor Deluxe), 160x160 mono/4-gray. On OS 3.5+ with a color
+ * screen (Palm IIIc, Visor Prism) it draws the map and marker in color,
+ * and on a grayscale screen it draws a 4-gray map; see InitScreen().
  *
  * Built on fujinet-lib-palmos (the standard FujiNet client library), the
  * same way ../fujiconfig does: network_open/network_json_parse/
@@ -64,6 +66,15 @@ static Coord gCurX, gCurY; /* current marker, screen coords */
 static Coord  gTrailX[TRAIL_LEN];
 static Coord  gTrailY[TRAIL_LEN];
 static UInt8  gTrailCount = 0;
+
+/* Screen mode, set by InitScreen(). gColor: OS 3.5+ with a color screen,
+ * 8-bit map. gGray: a 2-bit or deeper screen without color, 4-gray map.
+ * Neither: the 1-bit map, drawn as on the original Pilot. Only the color
+ * path calls 3.5-only APIs (WinSetForeColor and friends). */
+static Boolean gColor = false;
+static Boolean gGray = false;
+static Boolean gRestoreScreen = false;
+static IndexedColorType gMarkerColor, gTrailColor, gOceanColor;
 
 static char gLatLonLine[48];
 static char gTimeLine[24];
@@ -215,13 +226,77 @@ static void ComputeMapPosition(void)
 /* Drawing                                                             */
 /* ------------------------------------------------------------------ */
 
+static IndexedColorType RgbIndex(UInt8 r, UInt8 g, UInt8 b)
+{
+    RGBColorType rgb;
+
+    rgb.index = 0;
+    rgb.r = r;
+    rgb.g = g;
+    rgb.b = b;
+    return WinRGBToIndex(&rgb);
+}
+
+/* Picks the map for this screen. Color needs ROM 3.5+ (the color calls
+ * and winScreenModeGetSupportsColor don't exist before that) and a color
+ * screen, switching to 8-bit if it is running shallower. Otherwise, gray
+ * needs ROM 3.0+ (WinScreenMode is OS 3.0's ScrDisplayMode under its 3.5
+ * name, same trap) and a 2-bit screen, switching up from 1-bit if needed.
+ * PilotMain restores the screen mode on exit when gRestoreScreen is set. */
+static void InitScreen(void)
+{
+    UInt32 rom = 0;
+    UInt32 depth, depths;
+    Boolean color = false;
+
+    FtrGet(sysFtrCreator, sysFtrNumROMVersion, &rom);
+    if (rom < sysMakeROMVersion(3, 0, 0, sysROMStageRelease, 0)) {
+        return;
+    }
+    if (WinScreenMode(winScreenModeGet, 0, 0, &depth, 0) != errNone ||
+        WinScreenMode(winScreenModeGetSupportedDepths, 0, 0, &depths, 0) != errNone) {
+        return;
+    }
+    if (rom < sysMakeROMVersion(3, 5, 0, sysROMStageRelease, 0) ||
+        WinScreenMode(winScreenModeGetSupportsColor, 0, 0, 0, &color) != errNone || !color) {
+        if (depth < 2) {
+            if (!(depths & (1uL << (2 - 1)))) {
+                return;
+            }
+            depth = 2;
+            if (WinScreenMode(winScreenModeSet, 0, 0, &depth, 0) != errNone) {
+                return;
+            }
+            gRestoreScreen = true;
+        }
+        gGray = true;
+        return;
+    }
+    if (depth < 8) {
+        if (!(depths & (1uL << (8 - 1)))) {
+            return;
+        }
+        depth = 8;
+        color = true;
+        if (WinScreenMode(winScreenModeSet, 0, 0, &depth, &color) != errNone) {
+            return;
+        }
+        gRestoreScreen = true;
+    }
+
+    gMarkerColor = RgbIndex(0xFF, 0x00, 0x00);
+    gTrailColor = RgbIndex(0xFF, 0xFF, 0x00);
+    gOceanColor = RgbIndex(0x00, 0x00, 0x99); /* mkmaps.py's OCEAN */
+    gColor = true;
+}
+
 static void DrawMap(void)
 {
     MemHandle h;
     UInt8 i;
     RectangleType r;
 
-    h = DmGetResource(bitmapRsc, MapBitmap);
+    h = DmGetResource(bitmapRsc, gColor ? MapColorBitmap : gGray ? MapGrayBitmap : MapBitmap);
     if (h) {
         BitmapType *bmp = (BitmapType *)MemHandleLock(h);
 
@@ -230,11 +305,33 @@ static void DrawMap(void)
         DmReleaseResource(h);
     }
 
+    if (gColor) {
+        /* Navy edge under the map, so Antarctica doesn't run into the
+         * white form below it */
+        WinPushDrawState();
+        WinSetForeColor(gOceanColor);
+        WinDrawLine(MAP_X, MAP_Y + MAP_H, MAP_X + MAP_W - 1, MAP_Y + MAP_H);
+        WinSetForeColor(gTrailColor);
+    } else if (gGray) {
+        /* Black edge for the same reason */
+        WinDrawLine(MAP_X, MAP_Y + MAP_H, MAP_X + MAP_W - 1, MAP_Y + MAP_H);
+    }
     for (i = 0; i < gTrailCount; i++) {
-        WinDrawLine(gTrailX[i], gTrailY[i], gTrailX[i], gTrailY[i]);
+        /* White on the gray map's black ocean: before 3.5 there is no
+         * WinSetForeColor, but erasing draws in the white background */
+        if (gGray) {
+            WinEraseLine(gTrailX[i], gTrailY[i], gTrailX[i], gTrailY[i]);
+        } else {
+            WinDrawLine(gTrailX[i], gTrailY[i], gTrailX[i], gTrailY[i]);
+        }
     }
 
     if (gHavePos) {
+        /* The erased box is white in both modes; in color the cross
+         * on it is red. */
+        if (gColor) {
+            WinSetForeColor(gMarkerColor);
+        }
         r.topLeft.x = (Coord)(gCurX - 3);
         r.topLeft.y = (Coord)(gCurY - 3);
         r.extent.x = 7;
@@ -245,6 +342,9 @@ static void DrawMap(void)
         WinDrawLine((Coord)(gCurX - 3), (Coord)(gCurY + 3), (Coord)(gCurX + 3), (Coord)(gCurY - 3));
         WinDrawLine((Coord)(gCurX - 3), gCurY, (Coord)(gCurX + 3), gCurY);
         WinDrawLine(gCurX, (Coord)(gCurY - 3), gCurX, (Coord)(gCurY + 3));
+    }
+    if (gColor) {
+        WinPopDrawState();
     }
 }
 
@@ -575,6 +675,7 @@ UInt32 PilotMain(UInt16 cmd, MemPtr cmdPBP, UInt16 launchFlags)
         return 0;
     }
 
+    InitScreen();
     FrmGotoForm(MainForm);
 
     do {
@@ -613,5 +714,8 @@ UInt32 PilotMain(UInt16 cmd, MemPtr cmdPBP, UInt16 launchFlags)
     }
 
     FrmCloseAllForms();
+    if (gRestoreScreen) {
+        WinScreenMode(winScreenModeSetToDefaults, 0, 0, 0, 0);
+    }
     return 0;
 }

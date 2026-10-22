@@ -1,6 +1,10 @@
 #include "isstracker_rsc.h"
 
 BITMAP ID MapBitmap "map.bmp"
+/* Separate resources, not a BITMAPFAMILY: isstracker.c picks one for the
+ * screen, so OS 3.0/3.1 never load the version 2 (color) bitmap. */
+BITMAPCOLOR ID MapColorBitmap "map8.bmp"
+BITMAPGREY ID MapGrayBitmap "map2.bmp"
 
 FORM ID MainForm AT (0 0 160 160)
 NOFRAME
